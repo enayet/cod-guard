@@ -1,0 +1,681 @@
+/**
+ * COD Guard Admin Styles
+ * 
+ * Styles for admin settings, order management, and backend interface
+ */
+
+/* ==========================================================================
+   Settings Page
+   ========================================================================== */
+
+.cod-guard-settings-section {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    margin: 20px 0;
+    padding: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.cod-guard-settings-section h3 {
+    margin-top: 0;
+    color: #1d2327;
+    border-bottom: 1px solid #dcdcde;
+    padding-bottom: 10px;
+}
+
+/* Payment Mode Selector */
+.cod-guard-payment-mode-selector {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 15px;
+    margin: 15px 0;
+}
+
+.cod-guard-mode-option {
+    background: #f6f7f7;
+    border: 2px solid #dcdcde;
+    border-radius: 6px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.cod-guard-mode-option:hover {
+    border-color: #2271b1;
+    box-shadow: 0 2px 8px rgba(34, 113, 177, 0.15);
+}
+
+.cod-guard-mode-option.selected {
+    border-color: #2271b1;
+    background: #f0f6fc;
+    box-shadow: 0 2px 8px rgba(34, 113, 177, 0.2);
+}
+
+.cod-guard-mode-option .mode-title {
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cod-guard-mode-option .mode-description {
+    color: #646970;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+.cod-guard-mode-option .mode-icon {
+    font-size: 1.2em;
+}
+
+/* Dynamic Field Visibility */
+.cod-guard-percentage-field,
+.cod-guard-fixed-field {
+    transition: all 0.3s ease;
+}
+
+.cod-guard-field-hidden {
+    opacity: 0.5;
+    pointer-events: none;
+    transform: translateX(-10px);
+}
+
+/* Preview Section */
+.cod-guard-settings-preview {
+    background: linear-gradient(135deg, #f9f9f9 0%, #e9ecef 100%);
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    padding: 20px;
+    margin: 20px 0;
+    position: relative;
+}
+
+.cod-guard-settings-preview::before {
+    content: "👁";
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    font-size: 1.2em;
+    opacity: 0.6;
+}
+
+.cod-guard-preview-title {
+    font-weight: 600;
+    color: #1d2327;
+    margin-bottom: 15px;
+    font-size: 1.1em;
+}
+
+.cod-guard-calculation-example {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 15px;
+    font-family: "Courier New", monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+    margin: 10px 0;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.cod-guard-calculation-example .example-line {
+    margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cod-guard-calculation-example .example-line.total {
+    border-top: 1px solid #dcdcde;
+    padding-top: 8px;
+    margin-top: 10px;
+    font-weight: 600;
+}
+
+.cod-guard-calculation-example .highlight {
+    background: #fff3cd;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #856404;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Order Management
+   ========================================================================== */
+
+/* Order Info Panel */
+.cod-guard-order-info {
+    background: #f9f9f9;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 20px;
+    margin: 20px 0;
+    position: relative;
+}
+
+.cod-guard-order-info::before {
+    content: "🛡";
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 1.5em;
+    opacity: 0.3;
+}
+
+.cod-guard-order-info h3 {
+    margin-top: 0;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cod-guard-order-info h3::before {
+    content: "💳";
+    font-size: 1em;
+}
+
+.cod-guard-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.cod-guard-info-item {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    padding: 12px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.cod-guard-info-item:hover {
+    border-color: #2271b1;
+    box-shadow: 0 2px 8px rgba(34, 113, 177, 0.1);
+    transform: translateY(-1px);
+}
+
+.cod-guard-info-item strong {
+    color: #1d2327;
+    font-weight: 600;
+    flex: 0 0 45%;
+}
+
+.cod-guard-info-item span {
+    flex: 1;
+    text-align: right;
+    font-weight: 500;
+}
+
+.cod-guard-info-item span em {
+    font-size: 0.85em;
+    color: #646970;
+    font-style: normal;
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: #f6f7f7;
+}
+
+.cod-guard-info-item span.completed {
+    color: #00a32a;
+}
+
+.cod-guard-info-item span.completed em {
+    background: #dff0d8;
+    color: #3c763d;
+}
+
+.cod-guard-info-item span.pending {
+    color: #dba617;
+}
+
+.cod-guard-info-item span.pending em {
+    background: #fcf8e3;
+    color: #8a6d3b;
+}
+
+/* Payment Breakdown Table */
+.cod-guard-payment-breakdown {
+    margin: 20px 0;
+    background: #fff;
+    border: 1px solid #dcdcde;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.cod-guard-payment-breakdown h4 {
+    background: #f6f7f7;
+    margin: 0;
+    padding: 15px 20px;
+    border-bottom: 1px solid #dcdcde;
+    color: #1d2327;
+    font-size: 1em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cod-guard-payment-breakdown h4::before {
+    content: "📊";
+    font-size: 1.1em;
+}
+
+.cod-guard-breakdown-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.cod-guard-breakdown-table td {
+    padding: 12px 20px;
+    border-bottom: 1px solid #f1f1f1;
+    vertical-align: middle;
+}
+
+.cod-guard-breakdown-table tr:hover {
+    background: #f9f9f9;
+}
+
+.cod-guard-breakdown-table .total-row {
+    background: #f6f7f7;
+    border-top: 2px solid #dcdcde;
+    font-weight: 600;
+}
+
+.cod-guard-breakdown-table .status-completed {
+    color: #00a32a;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.cod-guard-breakdown-table .status-completed::before {
+    content: "✅";
+    font-size: 0.9em;
+}
+
+.cod-guard-breakdown-table .status-pending {
+    color: #dba617;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.cod-guard-breakdown-table .status-pending::before {
+    content: "⏳";
+    font-size: 0.9em;
+}
+
+/* ==========================================================================
+   Order List Columns
+   ========================================================================== */
+
+.widefat .column-cod_guard_status {
+    width: 140px;
+}
+
+.cod-guard-status {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.9em;
+}
+
+.cod-guard-status.completed {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.cod-guard-status.completed::before {
+    content: "✅ ";
+}
+
+.cod-guard-status.pending {
+    color: #dba617;
+    font-weight: 600;
+}
+
+.cod-guard-status.pending::before {
+    content: "⏳ ";
+}
+
+.cod-guard-status small {
+    opacity: 0.8;
+    font-weight: normal;
+}
+
+/* Order Status Colors */
+mark.advance-paid,
+.order-status.status-advance-paid {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    color: #856404;
+    border: 1px solid #ffc107;
+    font-weight: 600;
+}
+
+/* ==========================================================================
+   Order Actions
+   ========================================================================== */
+
+.woocommerce_order_actions .cod-guard-action {
+    background: #2271b1;
+    color: white;
+    border-color: #2271b1;
+}
+
+.woocommerce_order_actions .cod-guard-action:hover {
+    background: #135e96;
+    border-color: #135e96;
+}
+
+/* ==========================================================================
+   Bulk Actions
+   ========================================================================== */
+
+.cod-guard-bulk-notice {
+    background: #dff0d8;
+    border: 1px solid #d6e9c6;
+    color: #3c763d;
+    padding: 10px 15px;
+    border-radius: 4px;
+    margin: 15px 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cod-guard-bulk-notice::before {
+    content: "✅";
+    font-size: 1.2em;
+}
+
+/* ==========================================================================
+   Settings Form Elements
+   ========================================================================== */
+
+/* Enhanced Select Styling */
+.cod-guard-settings .select2-container {
+    width: 100% !important;
+}
+
+.cod-guard-settings .select2-selection {
+    min-height: 36px;
+    border-radius: 4px;
+}
+
+/* Range Slider */
+.cod-guard-percentage-slider {
+    width: 100%;
+    margin: 15px 0;
+}
+
+.cod-guard-percentage-display {
+    background: #2271b1;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 15px;
+    font-weight: 600;
+    display: inline-block;
+    margin-left: 10px;
+    min-width: 50px;
+    text-align: center;
+}
+
+/* Toggle Switch */
+.cod-guard-toggle {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+    margin: 0 10px;
+}
+
+.cod-guard-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.cod-guard-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 24px;
+}
+
+.cod-guard-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.4s;
+    border-radius: 50%;
+}
+
+.cod-guard-toggle input:checked + .cod-guard-toggle-slider {
+    background-color: #2271b1;
+}
+
+.cod-guard-toggle input:checked + .cod-guard-toggle-slider:before {
+    transform: translateX(26px);
+}
+
+/* ==========================================================================
+   Notification Styles
+   ========================================================================== */
+
+.cod-guard-admin-notice {
+    border-left: 4px solid #2271b1;
+    background: #f0f6fc;
+    padding: 12px;
+    margin: 15px 0;
+    position: relative;
+}
+
+.cod-guard-admin-notice.success {
+    border-left-color: #00a32a;
+    background: #f0fff4;
+}
+
+.cod-guard-admin-notice.warning {
+    border-left-color: #dba617;
+    background: #fffbf0;
+}
+
+.cod-guard-admin-notice.error {
+    border-left-color: #d63638;
+    background: #fdf2f2;
+}
+
+.cod-guard-admin-notice p {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cod-guard-admin-notice.success p::before {
+    content: "✅";
+}
+
+.cod-guard-admin-notice.warning p::before {
+    content: "⚠️";
+}
+
+.cod-guard-admin-notice.error p::before {
+    content: "❌";
+}
+
+/* ==========================================================================
+   Order Notes Styling
+   ========================================================================== */
+
+.comment.cod-guard-note {
+    border-left: 4px solid #2271b1;
+    background: #f0f6fc;
+}
+
+.comment.cod-guard-note .note_content {
+    position: relative;
+}
+
+.comment.cod-guard-note .note_content::before {
+    content: "🛡";
+    position: absolute;
+    left: -25px;
+    top: 0;
+    font-size: 1.2em;
+    opacity: 0.6;
+}
+
+/* ==========================================================================
+   Responsive Design
+   ========================================================================== */
+
+@media (max-width: 1200px) {
+    .cod-guard-info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .cod-guard-payment-mode-selector {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+    .cod-guard-order-info {
+        padding: 15px;
+    }
+    
+    .cod-guard-info-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .cod-guard-info-item strong,
+    .cod-guard-info-item span {
+        flex: none;
+        text-align: left;
+    }
+    
+    .cod-guard-breakdown-table td {
+        padding: 8px 12px;
+        font-size: 0.9em;
+    }
+    
+    .widefat .column-cod_guard_status {
+        width: auto;
+    }
+}
+
+/* ==========================================================================
+   Print Styles
+   ========================================================================== */
+
+@media print {
+    .cod-guard-order-info,
+    .cod-guard-payment-breakdown {
+        break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #000;
+    }
+    
+    .cod-guard-order-info::before,
+    .cod-guard-payment-breakdown h4::before {
+        display: none;
+    }
+    
+    .cod-guard-admin-notice {
+        display: none;
+    }
+}
+
+/* ==========================================================================
+   Dark Mode Support
+   ========================================================================== */
+
+@media (prefers-color-scheme: dark) {
+    .cod-guard-settings-preview {
+        background: linear-gradient(135deg, #2c3338 0%, #1d2327 100%);
+        border-color: #3c434a;
+        color: #f0f0f1;
+    }
+    
+    .cod-guard-calculation-example {
+        background: #1d2327;
+        border-color: #3c434a;
+        color: #f0f0f1;
+    }
+    
+    .cod-guard-order-info {
+        background: #2c3338;
+        border-color: #3c434a;
+        color: #f0f0f1;
+    }
+    
+    .cod-guard-info-item {
+        background: #1d2327;
+        border-color: #3c434a;
+        color: #f0f0f1;
+    }
+}
+
+/* ==========================================================================
+   Animations
+   ========================================================================== */
+
+@keyframes cod-guard-admin-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes cod-guard-admin-highlight {
+    0% { background: #2271b1; color: white; }
+    100% { background: transparent; color: inherit; }
+}
+
+.cod-guard-updated {
+    animation: cod-guard-admin-highlight 1s ease;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .cod-guard-info-item,
+    .cod-guard-mode-option,
+    .cod-guard-toggle-slider {
+        transition: none;
+    }
+    
+    .cod-guard-updated {
+        animation: none;
+    }
+}
