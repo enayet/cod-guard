@@ -1,8 +1,8 @@
 <?php
 /**
- * COD Guard Order Management
+ * COD Guard Order Management - FIXED VERSION
  * 
- * Handles order display, custom status, and admin order management
+ * Replace your class-order-management.php with this version
  */
 
 // Prevent direct access
@@ -31,7 +31,6 @@ class COD_Guard_Order_Management {
         // Order actions
         add_filter('woocommerce_order_actions', array($this, 'add_order_actions'));
         add_action('woocommerce_order_action_cod_guard_mark_cod_paid', array($this, 'mark_cod_paid'));
-        add_action('woocommerce_order_action_cod_guard_adjust_cod_amount', array($this, 'show_adjust_cod_form'));
         
         // My Account order display
         add_action('woocommerce_order_details_after_order_table', array($this, 'display_customer_cod_info'));
@@ -47,9 +46,6 @@ class COD_Guard_Order_Management {
         // Bulk actions
         add_filter('bulk_actions-edit-shop_order', array($this, 'add_bulk_actions'));
         add_filter('handle_bulk_actions-edit-shop_order', array($this, 'handle_bulk_actions'), 10, 3);
-        
-        // Order notes filter
-        add_filter('woocommerce_order_note_class', array($this, 'cod_guard_order_note_class'), 10, 2);
     }
     
     /**
@@ -92,11 +88,11 @@ class COD_Guard_Order_Management {
      * Display COD Guard info on admin order page
      */
     public function display_cod_guard_info($order) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $payment_summary = COD_Guard_Checkout_Handler::get_order_payment_summary($order);
+        $payment_summary = $this->get_order_payment_summary($order);
         
         if (!$payment_summary) {
             return;
@@ -207,11 +203,11 @@ class COD_Guard_Order_Management {
      * Display payment breakdown in order details
      */
     public function display_payment_breakdown($order) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $payment_summary = COD_Guard_Checkout_Handler::get_order_payment_summary($order);
+        $payment_summary = $this->get_order_payment_summary($order);
         
         if (!$payment_summary) {
             return;
@@ -303,12 +299,12 @@ class COD_Guard_Order_Management {
         
         $order = wc_get_order($post_id);
         
-        if (!$order || !COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$order || !$this->is_cod_guard_order($order)) {
             echo '<span class="na">—</span>';
             return;
         }
         
-        $cod_amount = COD_Guard_Payment_Modes::get_cod_amount($order);
+        $cod_amount = $this->get_cod_amount($order);
         $cod_status = $order->get_meta('_cod_guard_cod_status');
         
         if ($cod_amount > 0) {
@@ -330,20 +326,22 @@ class COD_Guard_Order_Management {
     public function add_order_actions($actions) {
         global $post;
         
+        if (!$post || !isset($post->ID)) {
+            return $actions;
+        }
+        
         $order = wc_get_order($post->ID);
         
-        if (!$order || !COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$order || !$this->is_cod_guard_order($order)) {
             return $actions;
         }
         
         $cod_status = $order->get_meta('_cod_guard_cod_status');
-        $cod_amount = COD_Guard_Payment_Modes::get_cod_amount($order);
+        $cod_amount = $this->get_cod_amount($order);
         
         if ($cod_status !== 'completed' && $cod_amount > 0) {
             $actions['cod_guard_mark_cod_paid'] = __('Mark COD as Paid', 'cod-guard-wc');
         }
-        
-        $actions['cod_guard_adjust_cod_amount'] = __('Adjust COD Amount', 'cod-guard-wc');
         
         return $actions;
     }
@@ -352,11 +350,11 @@ class COD_Guard_Order_Management {
      * Mark COD as paid
      */
     public function mark_cod_paid($order) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $cod_amount = COD_Guard_Payment_Modes::get_cod_amount($order);
+        $cod_amount = $this->get_cod_amount($order);
         
         // Update COD status
         $order->update_meta_data('_cod_guard_cod_status', 'completed');
@@ -385,11 +383,11 @@ class COD_Guard_Order_Management {
      * Display customer COD info on order details page
      */
     public function display_customer_cod_info($order) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $payment_summary = COD_Guard_Checkout_Handler::get_order_payment_summary($order);
+        $payment_summary = $this->get_order_payment_summary($order);
         
         if (!$payment_summary || $payment_summary['cod_amount'] <= 0) {
             return;
@@ -457,12 +455,12 @@ class COD_Guard_Order_Management {
      * Display My Account COD balance
      */
     public function display_my_account_cod_balance($order) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             echo '<span class="na">—</span>';
             return;
         }
         
-        $cod_amount = COD_Guard_Payment_Modes::get_cod_amount($order);
+        $cod_amount = $this->get_cod_amount($order);
         $cod_status = $order->get_meta('_cod_guard_cod_status');
         
         if ($cod_amount > 0 && $cod_status !== 'completed') {
@@ -552,7 +550,7 @@ class COD_Guard_Order_Management {
         foreach ($post_ids as $post_id) {
             $order = wc_get_order($post_id);
             
-            if ($order && COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+            if ($order && $this->is_cod_guard_order($order)) {
                 $this->mark_cod_paid($order);
                 $processed++;
             }
@@ -564,13 +562,56 @@ class COD_Guard_Order_Management {
     }
     
     /**
-     * Add custom class to COD Guard order notes
+     * Helper Methods - FIXED
      */
-    public function cod_guard_order_note_class($classes, $note) {
-        if (strpos($note->comment_content, 'COD Guard') !== false) {
-            $classes[] = 'cod-guard-note';
+    
+    /**
+     * Check if order uses COD Guard
+     */
+    private function is_cod_guard_order($order) {
+        if (!$order) {
+            return false;
+        }
+        return $order->get_meta('_cod_guard_enabled') === 'yes';
+    }
+    
+    /**
+     * Get advance amount for an order
+     */
+    private function get_advance_amount($order) {
+        if (!$order) {
+            return 0;
+        }
+        return floatval($order->get_meta('_cod_guard_advance_amount'));
+    }
+    
+    /**
+     * Get COD amount for an order
+     */
+    private function get_cod_amount($order) {
+        if (!$order) {
+            return 0;
+        }
+        return floatval($order->get_meta('_cod_guard_cod_amount'));
+    }
+    
+    /**
+     * Get order payment summary
+     */
+    private function get_order_payment_summary($order) {
+        if (!$this->is_cod_guard_order($order)) {
+            return false;
         }
         
-        return $classes;
+        return array(
+            'advance_amount' => $this->get_advance_amount($order),
+            'cod_amount' => $this->get_cod_amount($order),
+            'original_total' => floatval($order->get_meta('_cod_guard_original_total')),
+            'payment_mode' => $order->get_meta('_cod_guard_payment_mode'),
+            'advance_status' => $order->get_meta('_cod_guard_advance_status') ?: 'pending',
+            'cod_status' => $order->get_meta('_cod_guard_cod_status') ?: 'pending',
+            'advance_paid_date' => $order->get_meta('_cod_guard_advance_paid_date'),
+            'cod_paid_date' => $order->get_meta('_cod_guard_cod_paid_date'),
+        );
     }
 }

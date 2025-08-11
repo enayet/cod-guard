@@ -109,11 +109,12 @@ final class COD_Guard_WooCommerce {
     }
     
     /**
-     * Load plugin classes
+     * Load plugin classes - UPDATED to include checkout success handler
      */
     private function load_classes() {
-        // Load classes in the correct order - UPDATED for checkbox approach
+        // Core classes for checkbox approach
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-checkbox-handler.php';
+        require_once COD_GUARD_PLUGIN_PATH . 'includes/class-checkout-success.php';
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-order-management.php';
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-email-handler.php';
         
@@ -132,8 +133,11 @@ final class COD_Guard_WooCommerce {
             new COD_Guard_Admin_Settings();
         }
         
-        // Initialize checkbox handler (replaces payment gateway)
+        // Initialize checkbox handler (the main functionality)
         new COD_Guard_Checkbox_Handler();
+        
+        // Initialize checkout success handler
+        new COD_Guard_Checkout_Success();
         
         // Initialize order management and emails
         new COD_Guard_Order_Management();
@@ -162,6 +166,9 @@ final class COD_Guard_WooCommerce {
         
         // Flush rewrite rules
         flush_rewrite_rules();
+        
+        // Clear any existing logs
+        error_log('COD Guard: Plugin activated successfully');
     }
     
     /**
@@ -170,6 +177,8 @@ final class COD_Guard_WooCommerce {
     public function deactivate() {
         // Clean up if needed
         flush_rewrite_rules();
+        
+        error_log('COD Guard: Plugin deactivated');
     }
     
     /**
@@ -185,6 +194,10 @@ final class COD_Guard_WooCommerce {
             'description' => __('Pay a small advance amount now and the remaining balance on delivery.', 'cod-guard-wc'),
             'enable_for_categories' => array(),
             'minimum_order_amount' => 0,
+            'cod_behavior' => 'replace', // replace or alongside
+            'advance_payment_methods' => array(), // Empty means all except COD
+            'admin_notification' => 'yes',
+            'admin_email_subject' => __('COD Guard: Advance Payment Received - Order #{order_number}', 'cod-guard-wc'),
         );
         
         foreach ($defaults as $key => $value) {
@@ -247,6 +260,8 @@ final class COD_Guard_WooCommerce {
             'description' => get_option('cod_guard_description', __('Pay a small advance amount now and the remaining balance on delivery.', 'cod-guard-wc')),
             'enable_for_categories' => get_option('cod_guard_enable_for_categories', array()),
             'minimum_order_amount' => get_option('cod_guard_minimum_order_amount', 0),
+            'cod_behavior' => get_option('cod_guard_cod_behavior', 'replace'),
+            'advance_payment_methods' => get_option('cod_guard_advance_payment_methods', array()),
         );
     }
     
@@ -291,6 +306,107 @@ final class COD_Guard_WooCommerce {
     }
     
     /**
+     * Get original order total before COD Guard adjustment
+     */
+    public static function get_original_total($order) {
+        if (!$order) {
+            return 0;
+        }
+        return floatval($order->get_meta('_cod_guard_original_total'));
+    }
+    
+    /**
+     * Calculate advance amount for given total and settings
+     */
+    public static function calculate_advance_amount($total) {
+        $settings = self::get_settings();
+        $payment_mode = $settings['payment_mode'];
+        $advance_amount = 0;
+        
+        switch ($payment_mode) {
+            case 'percentage':
+                $percentage = intval($settings['percentage_amount']);
+                $advance_amount = ($total * $percentage) / 100;
+                break;
+                
+            case 'shipping':
+                // For shipping mode, we'd need shipping cost
+                // This is handled in the checkout handler
+                $advance_amount = 0;
+                break;
+                
+            case 'fixed':
+                $advance_amount = floatval($settings['fixed_amount']);
+                if ($advance_amount > $total) {
+                    $advance_amount = $total;
+                }
+                break;
+        }
+        
+        return max(0, $advance_amount);
+    }
+    
+    /**
+     * Get payment summary for an order
+     */
+    public static function get_order_payment_summary($order) {
+        if (!self::is_cod_guard_order($order)) {
+            return false;
+        }
+        
+        return array(
+            'advance_amount' => self::get_advance_amount($order),
+            'cod_amount' => self::get_cod_amount($order),
+            'original_total' => self::get_original_total($order),
+            'payment_mode' => self::get_payment_mode($order),
+            'advance_status' => $order->get_meta('_cod_guard_advance_status'),
+            'cod_status' => $order->get_meta('_cod_guard_cod_status'),
+            'advance_paid_date' => $order->get_meta('_cod_guard_advance_paid_date'),
+            'cod_paid_date' => $order->get_meta('_cod_guard_cod_paid_date'),
+        );
+    }
+    
+    /**
+     * Check if COD Guard is available for current cart
+     */
+    public static function is_available_for_cart() {
+        $settings = self::get_settings();
+        
+        if ($settings['enabled'] !== 'yes') {
+            return false;
+        }
+        
+        if (!WC()->cart || WC()->cart->is_empty()) {
+            return false;
+        }
+        
+        // Check minimum order amount
+        $minimum_amount = floatval($settings['minimum_order_amount']);
+        if ($minimum_amount > 0 && WC()->cart->get_total('edit') < $minimum_amount) {
+            return false;
+        }
+        
+        // Check category restrictions
+        $allowed_categories = $settings['enable_for_categories'];
+        if (!empty($allowed_categories)) {
+            $has_allowed_category = false;
+            foreach (WC()->cart->get_cart() as $cart_item) {
+                $product = $cart_item['data'];
+                $product_categories = wc_get_product_cat_ids($product->get_id());
+                if (array_intersect($product_categories, $allowed_categories)) {
+                    $has_allowed_category = true;
+                    break;
+                }
+            }
+            if (!$has_allowed_category) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /**
      * Get plugin version
      */
     public static function get_version() {
@@ -309,6 +425,15 @@ final class COD_Guard_WooCommerce {
      */
     public static function get_plugin_url() {
         return COD_GUARD_PLUGIN_URL;
+    }
+    
+    /**
+     * Log debug messages
+     */
+    public static function log($message, $level = 'info') {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[COD Guard ' . strtoupper($level) . '] ' . $message);
+        }
     }
 }
 
