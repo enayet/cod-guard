@@ -27,8 +27,11 @@ class COD_Guard_Checkbox_Handler {
         // CRITICAL: Process order data AFTER order creation but BEFORE payment processing
         add_action('woocommerce_checkout_order_processed', array($this, 'process_cod_guard_order'), 5, 3);
         
+        add_action('woocommerce_checkout_order_processed', array($this, 'modify_payment_amount_for_gateway'), 10, 1);
+        
         // Handle successful payment
         add_action('woocommerce_payment_complete', array($this, 'handle_advance_payment_complete'));
+        add_action('woocommerce_payment_complete', array($this, 'restore_original_total_after_payment'), 999);
         add_action('woocommerce_order_status_completed', array($this, 'handle_order_completed'));
         
         // CRITICAL: Fix checkout completion and redirect
@@ -51,6 +54,8 @@ class COD_Guard_Checkbox_Handler {
         
         // Fix cart clearing
         add_action('woocommerce_checkout_update_order_meta', array($this, 'maybe_clear_cart'), 999);
+        
+            
     }
     
     /**
@@ -143,6 +148,7 @@ class COD_Guard_Checkbox_Handler {
             <!-- Header Section -->
             <div class="cod-guard-header" style="background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0;">
                 <label for="cod_guard_enabled" style="display: flex; align-items: center; cursor: pointer; margin: 0;">
+
                     <div style="flex: 1;">
                         <h3 style="margin: 0 0 5px 0; font-size: 18px; color: #333; font-weight: 600;">
                             <?php echo esc_html($settings['title']); ?>
@@ -362,20 +368,20 @@ class COD_Guard_Checkbox_Handler {
         if (!WC()->session->get('cod_guard_enabled')) {
             return;
         }
-        
+
         if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
             return;
         }
-        
+
         $advance_amount = floatval($_POST['cod_guard_advance_amount']);
         $cod_amount = floatval($_POST['cod_guard_cod_amount']);
         $payment_mode = sanitize_text_field($_POST['cod_guard_payment_mode']);
         $original_total = WC()->session->get('cod_guard_original_total');
-        
+
         if (!$original_total) {
             $original_total = $order->get_total();
         }
-        
+
         // Store COD Guard meta data
         $order->update_meta_data('_cod_guard_enabled', 'yes');
         $order->update_meta_data('_cod_guard_advance_amount', $advance_amount);
@@ -384,28 +390,73 @@ class COD_Guard_Checkbox_Handler {
         $order->update_meta_data('_cod_guard_original_total', $original_total);
         $order->update_meta_data('_cod_guard_advance_status', 'pending');
         $order->update_meta_data('_cod_guard_cod_status', 'pending');
-        
-        // CRITICAL: Adjust order total to advance amount only
-        $order->set_total($advance_amount);
-        
-        // Adjust all order items proportionally
-        $this->adjust_order_items_proportionally($order, $advance_amount, $original_total);
-        
-        // Add order note
+
+        // 🚫 REMOVED: These lines that caused the problem
+        // $order->set_total($advance_amount);
+        // $this->adjust_order_items_proportionally($order, $advance_amount, $original_total);
+
+        // ✅ NEW: Store charge amount for payment processing
+        $order->update_meta_data('_cod_guard_charge_amount', $advance_amount);
+
+        // Add order note showing all totals clearly
         $order->add_order_note(
             sprintf(
-                __('COD Guard enabled. Advance: %s, COD Balance: %s, Original Total: %s, Payment Mode: %s', 'cod-guard-wc'),
+                __('COD Guard enabled. Order Total: %s | Advance Payment: %s | COD Balance: %s | Payment Mode: %s', 'cod-guard-wc'),
+                wc_price($original_total),
                 wc_price($advance_amount),
                 wc_price($cod_amount),
-                wc_price($original_total),
                 $payment_mode
             )
         );
-        
+
         $order->save();
-        
-        error_log('COD Guard: Order ' . $order_id . ' processed. Total adjusted from ' . $original_total . ' to ' . $advance_amount);
+
+        error_log('COD Guard: Order ' . $order_id . ' processed. Original total: ' . $original_total . ', Advance: ' . $advance_amount);
     }
+    
+    
+    /**
+     * Also ADD this new method to the same class to handle payment amount
+     */
+    public function modify_payment_amount_for_gateway($order_id) {
+        $order = wc_get_order($order_id);
+
+        if (!$order || !$this->is_cod_guard_order($order)) {
+            return;
+        }
+
+        $advance_amount = $order->get_meta('_cod_guard_charge_amount');
+
+        if ($advance_amount) {
+            // Temporarily set total to advance amount for payment processing
+            $order->set_total($advance_amount);
+            $order->save();
+
+            error_log('COD Guard: Payment amount set to ' . $advance_amount . ' for order ' . $order_id);
+        }
+    }
+
+    /**
+     * Also ADD this method to restore total after payment
+     */
+    public function restore_original_total_after_payment($order_id) {
+        $order = wc_get_order($order_id);
+
+        if (!$order || !$this->is_cod_guard_order($order)) {
+            return;
+        }
+
+        $original_total = $order->get_meta('_cod_guard_original_total');
+
+        if ($original_total) {
+            // Restore original total for display
+            $order->set_total($original_total);
+            $order->save();
+
+            error_log('COD Guard: Total restored to ' . $original_total . ' for order ' . $order_id);
+        }
+    }    
+    
     
     /**
      * CRITICAL: Ensure checkout completion - runs last
@@ -702,24 +753,70 @@ class COD_Guard_Checkbox_Handler {
         if (!COD_Guard_WooCommerce::is_cod_guard_order($order)) {
             return;
         }
-        
+
         $advance_amount = COD_Guard_WooCommerce::get_advance_amount($order);
         $cod_amount = COD_Guard_WooCommerce::get_cod_amount($order);
         $advance_status = $order->get_meta('_cod_guard_advance_status');
         $cod_status = $order->get_meta('_cod_guard_cod_status');
         $original_total = $order->get_meta('_cod_guard_original_total');
-        
+        $payment_mode = $order->get_meta('_cod_guard_payment_mode');
+
         ?>
-        <div class="cod-guard-admin-info" style="background: #f8f9fa; padding: 15px; margin: 15px 0; border-radius: 4px; border-left: 4px solid #007cba;">
-            <h3><?php _e('COD Guard Payment Info', 'cod-guard-wc'); ?></h3>
-            <p><strong><?php _e('Original Order Total:', 'cod-guard-wc'); ?></strong> <?php echo wc_price($original_total); ?></p>
-            <p><strong><?php _e('Advance Payment:', 'cod-guard-wc'); ?></strong> <?php echo wc_price($advance_amount); ?> <em style="color: #28a745;">(<?php echo esc_html(ucfirst($advance_status)); ?>)</em></p>
-            <p><strong><?php _e('COD Balance:', 'cod-guard-wc'); ?></strong> <?php echo wc_price($cod_amount); ?> <em style="color: #ffc107;">(<?php echo esc_html(ucfirst($cod_status)); ?>)</em></p>
+        <div class="cod-guard-admin-info-fixed" style="background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); border: 2px solid #007cba; border-radius: 8px; padding: 20px; margin: 20px 0;">
+            <h3 style="margin: 0 0 15px 0; color: #007cba; display: flex; align-items: center; gap: 10px; font-size: 18px;">
+                🛡️ <?php _e('COD Guard Payment Details', 'cod-guard-wc'); ?>
+                <span style="background: #007cba; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: normal;">
+                    <?php echo esc_html(ucfirst($payment_mode)); ?>
+                </span>
+            </h3>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+
+                <!-- Order Total -->
+                <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ddd; text-align: center;">
+                    <div style="font-size: 14px; color: #666; margin-bottom: 5px;">📋 <?php _e('Order Total', 'cod-guard-wc'); ?></div>
+                    <div style="font-size: 20px; font-weight: bold; color: #333;"><?php echo wc_price($original_total); ?></div>
+                    <div style="font-size: 12px; color: #888; margin-top: 5px;"><?php _e('(Full Order Value)', 'cod-guard-wc'); ?></div>
+                </div>
+
+                <!-- Advance Payment -->
+                <div style="background: <?php echo $advance_status === 'completed' ? '#d4edda' : '#fff3cd'; ?>; padding: 15px; border-radius: 6px; border: 1px solid <?php echo $advance_status === 'completed' ? '#c3e6cb' : '#ffeaa7'; ?>; text-align: center;">
+                    <div style="font-size: 14px; color: #666; margin-bottom: 5px;">💰 <?php _e('Advance Payment', 'cod-guard-wc'); ?></div>
+                    <div style="font-size: 20px; font-weight: bold; color: <?php echo $advance_status === 'completed' ? '#155724' : '#856404'; ?>;">
+                        <?php echo wc_price($advance_amount); ?>
+                    </div>
+                    <div style="font-size: 12px; margin-top: 5px; color: <?php echo $advance_status === 'completed' ? '#155724' : '#856404'; ?>;">
+                        <?php echo $advance_status === 'completed' ? '✅ ' . __('Paid', 'cod-guard-wc') : '⏳ ' . __('Pending', 'cod-guard-wc'); ?>
+                    </div>
+                </div>
+
+                <!-- COD Balance -->
+                <div style="background: <?php echo $cod_status === 'completed' ? '#d4edda' : '#f8d7da'; ?>; padding: 15px; border-radius: 6px; border: 1px solid <?php echo $cod_status === 'completed' ? '#c3e6cb' : '#f5c6cb'; ?>; text-align: center;">
+                    <div style="font-size: 14px; color: #666; margin-bottom: 5px;">🚚 <?php _e('COD Balance', 'cod-guard-wc'); ?></div>
+                    <div style="font-size: 20px; font-weight: bold; color: <?php echo $cod_status === 'completed' ? '#155724' : '#721c24'; ?>;">
+                        <?php echo wc_price($cod_amount); ?>
+                    </div>
+                    <div style="font-size: 12px; margin-top: 5px; color: <?php echo $cod_status === 'completed' ? '#155724' : '#721c24'; ?>;">
+                        <?php echo $cod_status === 'completed' ? '✅ ' . __('Collected', 'cod-guard-wc') : '📋 ' . __('Due on Delivery', 'cod-guard-wc'); ?>
+                    </div>
+                </div>
+
+            </div>
+
             <?php if ($cod_status !== 'completed' && $cod_amount > 0): ?>
-            <p style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 10px 0;">
-                <strong><?php _e('Note:', 'cod-guard-wc'); ?></strong> <?php printf(__('Customer needs to pay %s on delivery.', 'cod-guard-wc'), wc_price($cod_amount)); ?>
-            </p>
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; border-radius: 6px; margin-top: 15px; text-align: center;">
+                <strong style="color: #856404;">⚠️ <?php _e('Action Required:', 'cod-guard-wc'); ?></strong>
+                <span style="color: #856404;">
+                    <?php printf(__('Collect %s from customer on delivery.', 'cod-guard-wc'), '<strong>' . wc_price($cod_amount) . '</strong>'); ?>
+                </span>
+            </div>
             <?php endif; ?>
+
+            <!-- Verification Row -->
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 14px; color: #666;">
+                <?php _e('Verification:', 'cod-guard-wc'); ?> 
+                <?php echo wc_price($advance_amount); ?> + <?php echo wc_price($cod_amount); ?> = <?php echo wc_price($original_total); ?>
+            </div>
         </div>
         <?php
     }
