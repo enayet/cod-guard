@@ -295,8 +295,7 @@ jQuery(document).ready(function($) {
             
             .cod-guard-total-notice th,
             .cod-guard-total-notice td {
-                padding: 8px 0;
-                font-size: 0.9em;
+
             }
             
             .cod-guard-error {

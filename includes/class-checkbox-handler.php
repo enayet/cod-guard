@@ -143,9 +143,6 @@ class COD_Guard_Checkbox_Handler {
             <!-- Header Section -->
             <div class="cod-guard-header" style="background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0;">
                 <label for="cod_guard_enabled" style="display: flex; align-items: center; cursor: pointer; margin: 0;">
-                    <div style="width: 40px; height: 40px; background: #6f42c1; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 15px; flex-shrink: 0;">
-                        <span style="color: white; font-size: 18px; font-weight: bold;">◐</span>
-                    </div>
                     <div style="flex: 1;">
                         <h3 style="margin: 0 0 5px 0; font-size: 18px; color: #333; font-weight: 600;">
                             <?php echo esc_html($settings['title']); ?>
