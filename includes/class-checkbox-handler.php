@@ -1,6 +1,6 @@
 <?php
 /**
- * COD Guard Checkbox Handler - FINAL FIX
+ * COD Guard Checkbox Handler - COMPLETE FIX
  * Replace includes/class-checkbox-handler.php with this version
  */
 
@@ -15,6 +15,9 @@ class COD_Guard_Checkbox_Handler {
      * Constructor
      */
     public function __construct() {
+        // CRITICAL: Handle COD replacement FIRST
+        add_filter('woocommerce_available_payment_gateways', array($this, 'filter_payment_gateways'), 999);
+        
         // Add checkbox to checkout
         add_action('woocommerce_review_order_before_payment', array($this, 'add_cod_guard_checkbox'));
         
@@ -48,6 +51,41 @@ class COD_Guard_Checkbox_Handler {
         
         // Fix cart clearing
         add_action('woocommerce_checkout_update_order_meta', array($this, 'maybe_clear_cart'), 999);
+    }
+    
+    /**
+     * CRITICAL: Filter payment gateways based on COD behavior setting
+     */
+    public function filter_payment_gateways($gateways) {
+        // Only filter on checkout page
+        if (!is_checkout()) {
+            return $gateways;
+        }
+        
+        $settings = COD_Guard_WooCommerce::get_settings();
+        
+        // If COD Guard is not enabled, don't filter
+        if ($settings['enabled'] !== 'yes') {
+            return $gateways;
+        }
+        
+        // If COD Guard is not available for current cart, don't filter
+        if (!$this->is_cod_guard_available()) {
+            return $gateways;
+        }
+        
+        // Check COD behavior setting
+        $cod_behavior = $settings['cod_behavior'];
+        
+        if ($cod_behavior === 'replace') {
+            // Remove COD if it exists
+            if (isset($gateways['cod'])) {
+                unset($gateways['cod']);
+            }
+        }
+        // If 'alongside', we keep COD available
+        
+        return $gateways;
     }
     
     /**
@@ -189,7 +227,7 @@ class COD_Guard_Checkbox_Handler {
     }
     
     /**
-     * Check if COD Guard is available
+     * Check if COD Guard is available - IMPROVED VERSION
      */
     private function is_cod_guard_available() {
         $settings = COD_Guard_WooCommerce::get_settings();
@@ -208,13 +246,15 @@ class COD_Guard_Checkbox_Handler {
             return false;
         }
         
-        // Check category restrictions
+        // Check category restrictions - IMPROVED LOGIC
         $allowed_categories = $settings['enable_for_categories'];
         if (!empty($allowed_categories)) {
             $has_allowed_category = false;
             foreach (WC()->cart->get_cart() as $cart_item) {
                 $product = $cart_item['data'];
                 $product_categories = wc_get_product_cat_ids($product->get_id());
+                
+                // If ANY product in cart matches ANY allowed category, enable COD Guard
                 if (array_intersect($product_categories, $allowed_categories)) {
                     $has_allowed_category = true;
                     break;

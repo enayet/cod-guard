@@ -1,6 +1,6 @@
 <?php
 /**
- * COD Guard Admin Settings - FIXED VERSION
+ * COD Guard Admin Settings - COMPLETE FIX
  * 
  * Replace your existing class-admin-settings.php with this
  */
@@ -88,7 +88,7 @@ class COD_Guard_Admin_Settings {
                     'fixed'      => __('Fixed Amount', 'cod-guard-wc'),
                 ),
                 'default' => 'percentage',
-                'class'   => 'wc-enhanced-select',
+                'class'   => 'wc-enhanced-select cod-guard-payment-mode-select',
             ),
             
             array(
@@ -107,15 +107,16 @@ class COD_Guard_Admin_Settings {
             
             array(
                 'name'              => __('Fixed Amount', 'cod-guard-wc'),
-                'type'              => 'price',
+                'type'              => 'number',
                 'desc'              => __('Fixed amount to collect as advance payment', 'cod-guard-wc'),
                 'id'                => 'cod_guard_fixed_amount',
                 'default'           => '10',
                 'custom_attributes' => array(
-                    'min'  => '0',
-                    'step' => '0.01',
+                    'min'  => '1',
+                    'step' => '1',
                 ),
                 'class'             => 'cod-guard-fixed-field',
+                'css'               => 'width: 150px;',
             ),
             
             array(
@@ -151,9 +152,9 @@ class COD_Guard_Admin_Settings {
             array(
                 'name'    => __('Enable for Categories', 'cod-guard-wc'),
                 'type'    => 'multiselect',
-                'desc'    => __('Select product categories where COD Guard should be available (leave empty for all categories)', 'cod-guard-wc'),
+                'desc'    => __('Select product categories where COD Guard should be available. If multiple products from different categories are in cart, COD Guard will be available if ANY product matches. Leave empty for all categories.', 'cod-guard-wc'),
                 'id'      => 'cod_guard_enable_for_categories',
-                'options' => $this->get_product_categories(),
+                'options' => $this->get_product_categories_hierarchical(),
                 'class'   => 'wc-enhanced-select',
             ),
             
@@ -271,23 +272,61 @@ class COD_Guard_Admin_Settings {
     }
     
     /**
-     * Get product categories for multiselect
+     * Get product categories with hierarchy for multiselect
      */
-    private function get_product_categories() {
+    private function get_product_categories_hierarchical() {
         $categories = array();
         
         $terms = get_terms(array(
             'taxonomy'   => 'product_cat',
             'hide_empty' => false,
+            'hierarchical' => true,
         ));
         
         if (!is_wp_error($terms) && !empty($terms)) {
-            foreach ($terms as $term) {
-                $categories[$term->term_id] = $term->name;
-            }
+            // Build hierarchical array
+            $hierarchy = $this->build_category_hierarchy($terms);
+            $categories = $this->flatten_category_hierarchy($hierarchy);
         }
         
         return $categories;
+    }
+    
+    /**
+     * Build category hierarchy
+     */
+    private function build_category_hierarchy($terms, $parent = 0) {
+        $hierarchy = array();
+        
+        foreach ($terms as $term) {
+            if ($term->parent == $parent) {
+                $children = $this->build_category_hierarchy($terms, $term->term_id);
+                if ($children) {
+                    $term->children = $children;
+                }
+                $hierarchy[] = $term;
+            }
+        }
+        
+        return $hierarchy;
+    }
+    
+    /**
+     * Flatten category hierarchy for dropdown
+     */
+    private function flatten_category_hierarchy($categories, $level = 0) {
+        $flattened = array();
+        
+        foreach ($categories as $category) {
+            $prefix = str_repeat('— ', $level);
+            $flattened[$category->term_id] = $prefix . $category->name;
+            
+            if (isset($category->children)) {
+                $flattened = $flattened + $this->flatten_category_hierarchy($category->children, $level + 1);
+            }
+        }
+        
+        return $flattened;
     }
     
     /**
@@ -311,7 +350,7 @@ class COD_Guard_Admin_Settings {
     }
     
     /**
-     * Output custom JavaScript for admin page
+     * Output custom JavaScript for admin page - SIMPLIFIED VERSION
      */
     private function output_custom_js() {
         ?>
@@ -321,48 +360,28 @@ class COD_Guard_Admin_Settings {
             function togglePaymentModeFields() {
                 var paymentMode = $('#cod_guard_payment_mode').val();
                 
-                $('.cod-guard-percentage-field').closest('tr').toggle(paymentMode === 'percentage');
-                $('.cod-guard-fixed-field').closest('tr').toggle(paymentMode === 'fixed');
+                // Hide all mode-specific fields first
+                $('.cod-guard-percentage-field').closest('tr').hide();
+                $('.cod-guard-fixed-field').closest('tr').hide();
+                
+                // Show relevant field
+                if (paymentMode === 'percentage') {
+                    $('.cod-guard-percentage-field').closest('tr').show();
+                } else if (paymentMode === 'fixed') {
+                    $('.cod-guard-fixed-field').closest('tr').show();
+                }
+                // Shipping mode doesn't need extra fields
             }
             
-            // Initial toggle
+            // Initial toggle on page load
             togglePaymentModeFields();
             
             // Toggle on change
-            $('#cod_guard_payment_mode').on('change', togglePaymentModeFields);
-            
-            // Percentage slider functionality
-            $('#cod_guard_percentage_amount').on('input change', function() {
-                var value = $(this).val();
-                $(this).next('.description').find('.percentage-display').text(value + '%');
+            $('#cod_guard_payment_mode').on('change', function() {
+                togglePaymentModeFields();
             });
         });
         </script>
-        
-        <style>
-        .cod-guard-settings-preview {
-            background: #f9f9f9;
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-        
-        .cod-guard-preview-title {
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #333;
-        }
-        
-        .cod-guard-calculation-example {
-            font-family: monospace;
-            background: #fff;
-            border: 1px solid #ccc;
-            padding: 10px;
-            border-radius: 3px;
-            margin: 5px 0;
-        }
-        </style>
         <?php
     }
     
