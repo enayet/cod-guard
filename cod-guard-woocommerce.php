@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('COD_GUARD_VERSION', '1.1.0');
+define('COD_GUARD_VERSION', '1.1.1');
 define('COD_GUARD_PLUGIN_FILE', __FILE__);
 define('COD_GUARD_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('COD_GUARD_PLUGIN_URL', plugin_dir_url(__FILE__));
