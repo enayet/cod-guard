@@ -114,6 +114,7 @@ final class COD_Guard_WooCommerce {
     private function load_classes() {
         // Core classes for checkbox approach
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-checkbox-handler.php';
+        require_once COD_GUARD_PLUGIN_PATH . 'includes/class-payment-handler.php';
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-checkout-success.php';
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-order-management.php';
         require_once COD_GUARD_PLUGIN_PATH . 'includes/class-email-handler.php';
@@ -135,6 +136,8 @@ final class COD_Guard_WooCommerce {
         
         // Initialize checkbox handler (the main functionality)
         new COD_Guard_Checkbox_Handler();
+        
+        new COD_Guard_Payment_Handler();
         
         // Initialize checkout success handler
         new COD_Guard_Checkout_Success();

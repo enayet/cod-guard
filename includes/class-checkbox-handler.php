@@ -1,7 +1,11 @@
 <?php
 /**
- * COD Guard Checkbox Handler - COMPLETE FIX
- * Replace includes/class-checkbox-handler.php with this version
+ * COMPLETE FIX for COD Guard - Replace your class-checkbox-handler.php
+ * 
+ * Key Changes:
+ * 1. NEVER modify order total or cart total
+ * 2. Only manipulate payment gateway amounts
+ * 3. Keep $20.99 visible everywhere, charge only $15.00
  */
 
 // Prevent direct access
@@ -24,18 +28,15 @@ class COD_Guard_Checkbox_Handler {
         // Handle checkout processing
         add_action('woocommerce_checkout_process', array($this, 'validate_cod_guard_checkout'));
         
-        // CRITICAL: Process order data AFTER order creation but BEFORE payment processing
+        // CRITICAL: Process order data AFTER order creation
         add_action('woocommerce_checkout_order_processed', array($this, 'process_cod_guard_order'), 5, 3);
         
-        add_action('woocommerce_checkout_order_processed', array($this, 'modify_payment_amount_for_gateway'), 10, 1);
+        // CRITICAL: Modify payment amount ONLY for payment gateway processing
+        add_filter('woocommerce_cart_get_total', array($this, 'modify_cart_total_for_payment'), 999);
         
         // Handle successful payment
         add_action('woocommerce_payment_complete', array($this, 'handle_advance_payment_complete'));
-        add_action('woocommerce_payment_complete', array($this, 'restore_original_total_after_payment'), 999);
         add_action('woocommerce_order_status_completed', array($this, 'handle_order_completed'));
-        
-        // CRITICAL: Fix checkout completion and redirect
-        add_action('woocommerce_checkout_order_processed', array($this, 'ensure_checkout_completion'), 999, 3);
         
         // Scripts and styles
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
@@ -51,11 +52,6 @@ class COD_Guard_Checkbox_Handler {
         // Register custom order status
         add_action('init', array($this, 'register_custom_order_status'));
         add_filter('wc_order_statuses', array($this, 'add_custom_order_status'));
-        
-        // Fix cart clearing
-        add_action('woocommerce_checkout_update_order_meta', array($this, 'maybe_clear_cart'), 999);
-        
-            
     }
     
     /**
@@ -88,9 +84,39 @@ class COD_Guard_Checkbox_Handler {
                 unset($gateways['cod']);
             }
         }
-        // If 'alongside', we keep COD available
         
         return $gateways;
+    }
+    
+    /**
+     * CRITICAL: Modify cart total ONLY for payment processing
+     * This is the key fix - only modify when payment gateway needs the amount
+     */
+    public function modify_cart_total_for_payment($total) {
+        // Only modify during payment processing, not during display
+        if (is_admin() || !is_checkout() || is_order_received_page()) {
+            return $total;
+        }
+        
+        // Check if COD Guard is enabled in current checkout session
+        if (!WC()->session || !WC()->session->get('cod_guard_enabled')) {
+            return $total;
+        }
+        
+        // Check if we're in payment processing phase
+        if (isset($_POST['cod_guard_enabled']) && $_POST['cod_guard_enabled'] === '1') {
+            $advance_amount = floatval($_POST['cod_guard_advance_amount']);
+            
+            if ($advance_amount > 0) {
+                // Store original total for later use
+                WC()->session->set('cod_guard_original_total', $total);
+                
+                // Return advance amount for payment processing ONLY
+                return wc_price($advance_amount);
+            }
+        }
+        
+        return $total;
     }
     
     /**
@@ -148,7 +174,6 @@ class COD_Guard_Checkbox_Handler {
             <!-- Header Section -->
             <div class="cod-guard-header" style="background: #f8f9fa; padding: 15px; border-bottom: 1px solid #e0e0e0;">
                 <label for="cod_guard_enabled" style="display: flex; align-items: center; cursor: pointer; margin: 0;">
-
                     <div style="flex: 1;">
                         <h3 style="margin: 0 0 5px 0; font-size: 18px; color: #333; font-weight: 600;">
                             <?php echo esc_html($settings['title']); ?>
@@ -230,7 +255,7 @@ class COD_Guard_Checkbox_Handler {
     }
     
     /**
-     * Check if COD Guard is available - IMPROVED VERSION
+     * Check if COD Guard is available
      */
     private function is_cod_guard_available() {
         $settings = COD_Guard_WooCommerce::get_settings();
@@ -249,7 +274,7 @@ class COD_Guard_Checkbox_Handler {
             return false;
         }
         
-        // Check category restrictions - IMPROVED LOGIC
+        // Check category restrictions
         $allowed_categories = $settings['enable_for_categories'];
         if (!empty($allowed_categories)) {
             $has_allowed_category = false;
@@ -257,7 +282,6 @@ class COD_Guard_Checkbox_Handler {
                 $product = $cart_item['data'];
                 $product_categories = wc_get_product_cat_ids($product->get_id());
                 
-                // If ANY product in cart matches ANY allowed category, enable COD Guard
                 if (array_intersect($product_categories, $allowed_categories)) {
                     $has_allowed_category = true;
                     break;
@@ -320,7 +344,7 @@ class COD_Guard_Checkbox_Handler {
     }
     
     /**
-     * Validate COD Guard checkout - SIMPLIFIED VERSION
+     * Validate COD Guard checkout
      */
     public function validate_cod_guard_checkout() {
         // If COD Guard is not enabled, proceed with normal checkout
@@ -361,28 +385,29 @@ class COD_Guard_Checkbox_Handler {
     }
     
     /**
-     * Process COD Guard order - HAPPENS AFTER ORDER CREATION
+     * Process COD Guard order - FIXED VERSION
+     * This NEVER modifies order total, only stores metadata
      */
     public function process_cod_guard_order($order_id, $posted_data, $order) {
         // Check if COD Guard is enabled for this order
         if (!WC()->session->get('cod_guard_enabled')) {
             return;
         }
-
+        
         if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
             return;
         }
-
+        
         $advance_amount = floatval($_POST['cod_guard_advance_amount']);
         $cod_amount = floatval($_POST['cod_guard_cod_amount']);
         $payment_mode = sanitize_text_field($_POST['cod_guard_payment_mode']);
         $original_total = WC()->session->get('cod_guard_original_total');
-
+        
         if (!$original_total) {
             $original_total = $order->get_total();
         }
-
-        // Store COD Guard meta data
+        
+        // Store COD Guard meta data - DO NOT MODIFY ORDER TOTAL
         $order->update_meta_data('_cod_guard_enabled', 'yes');
         $order->update_meta_data('_cod_guard_advance_amount', $advance_amount);
         $order->update_meta_data('_cod_guard_cod_amount', $cod_amount);
@@ -390,14 +415,7 @@ class COD_Guard_Checkbox_Handler {
         $order->update_meta_data('_cod_guard_original_total', $original_total);
         $order->update_meta_data('_cod_guard_advance_status', 'pending');
         $order->update_meta_data('_cod_guard_cod_status', 'pending');
-
-        // 🚫 REMOVED: These lines that caused the problem
-        // $order->set_total($advance_amount);
-        // $this->adjust_order_items_proportionally($order, $advance_amount, $original_total);
-
-        // ✅ NEW: Store charge amount for payment processing
-        $order->update_meta_data('_cod_guard_charge_amount', $advance_amount);
-
+        
         // Add order note showing all totals clearly
         $order->add_order_note(
             sprintf(
@@ -408,159 +426,10 @@ class COD_Guard_Checkbox_Handler {
                 $payment_mode
             )
         );
-
+        
         $order->save();
-
+        
         error_log('COD Guard: Order ' . $order_id . ' processed. Original total: ' . $original_total . ', Advance: ' . $advance_amount);
-    }
-    
-    
-    /**
-     * Also ADD this new method to the same class to handle payment amount
-     */
-    public function modify_payment_amount_for_gateway($order_id) {
-        $order = wc_get_order($order_id);
-
-        if (!$order || !$this->is_cod_guard_order($order)) {
-            return;
-        }
-
-        $advance_amount = $order->get_meta('_cod_guard_charge_amount');
-
-        if ($advance_amount) {
-            // Temporarily set total to advance amount for payment processing
-            $order->set_total($advance_amount);
-            $order->save();
-
-            error_log('COD Guard: Payment amount set to ' . $advance_amount . ' for order ' . $order_id);
-        }
-    }
-
-    /**
-     * Also ADD this method to restore total after payment
-     */
-    public function restore_original_total_after_payment($order_id) {
-        $order = wc_get_order($order_id);
-
-        if (!$order || !$this->is_cod_guard_order($order)) {
-            return;
-        }
-
-        $original_total = $order->get_meta('_cod_guard_original_total');
-
-        if ($original_total) {
-            // Restore original total for display
-            $order->set_total($original_total);
-            $order->save();
-
-            error_log('COD Guard: Total restored to ' . $original_total . ' for order ' . $order_id);
-        }
-    }    
-    
-    
-    /**
-     * CRITICAL: Ensure checkout completion - runs last
-     */
-    public function ensure_checkout_completion($order_id, $posted_data, $order) {
-        // Only handle COD Guard orders
-        if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
-            return;
-        }
-        
-        if (!$order || !COD_Guard_WooCommerce::is_cod_guard_order($order)) {
-            return;
-        }
-        
-        // Clear cart immediately for COD Guard orders
-        if (WC()->cart) {
-            WC()->cart->empty_cart();
-        }
-        
-        // Clear any error notices that might interfere
-        $notices = wc_get_notices('error');
-        if (!empty($notices)) {
-            // Filter out generic processing errors
-            $filtered_notices = array_filter($notices, function($notice) {
-                $message = is_array($notice) ? $notice['notice'] : $notice;
-                return strpos($message, 'error processing') === false && 
-                       strpos($message, 'review your order') === false;
-            });
-            
-            // Clear all notices and re-add only the filtered ones
-            wc_clear_notices();
-            foreach ($filtered_notices as $notice) {
-                wc_add_notice($notice, 'error');
-            }
-        }
-        
-        // Clear session data
-        WC()->session->__unset('cod_guard_enabled');
-        WC()->session->__unset('cod_guard_original_total');
-        
-        // Force set order as successful for redirect
-        if (!$order->is_paid() && $order->get_status() === 'pending') {
-            // For orders that need payment processing, mark as processing
-            $order->update_status('processing', __('COD Guard order awaiting payment.', 'cod-guard-wc'));
-        }
-        
-        error_log('COD Guard: Checkout completion ensured for order ' . $order_id);
-    }
-    
-    /**
-     * Maybe clear cart - backup method
-     */
-    public function maybe_clear_cart($order_id) {
-        $order = wc_get_order($order_id);
-        
-        if ($order && COD_Guard_WooCommerce::is_cod_guard_order($order)) {
-            // Force cart clear for COD Guard orders
-            if (WC()->cart) {
-                WC()->cart->empty_cart();
-            }
-            
-            error_log('COD Guard: Cart cleared for order ' . $order_id);
-        }
-    }
-    
-    /**
-     * Adjust order items proportionally
-     */
-    private function adjust_order_items_proportionally($order, $new_total, $original_total) {
-        if ($original_total <= 0) {
-            return;
-        }
-        
-        $ratio = $new_total / $original_total;
-        
-        // Adjust line items
-        foreach ($order->get_items() as $item) {
-            $original_item_total = $item->get_total();
-            $original_item_subtotal = $item->get_subtotal();
-            
-            $item->set_total($original_item_total * $ratio);
-            $item->set_subtotal($original_item_subtotal * $ratio);
-            $item->save();
-        }
-        
-        // Adjust shipping
-        foreach ($order->get_shipping_methods() as $shipping_item) {
-            $original_shipping_total = $shipping_item->get_total();
-            $shipping_item->set_total($original_shipping_total * $ratio);
-            $shipping_item->save();
-        }
-        
-        // Adjust taxes proportionally
-        foreach ($order->get_items('tax') as $tax_item) {
-            $original_tax_total = $tax_item->get_tax_total();
-            $original_shipping_tax = $tax_item->get_shipping_tax_total();
-            
-            $tax_item->set_tax_total($original_tax_total * $ratio);
-            $tax_item->set_shipping_tax_total($original_shipping_tax * $ratio);
-            $tax_item->save();
-        }
-        
-        // Recalculate and save
-        $order->calculate_totals();
     }
     
     /**
@@ -579,7 +448,6 @@ class COD_Guard_Checkbox_Handler {
         
         $advance_amount = COD_Guard_WooCommerce::get_advance_amount($order);
         $cod_amount = COD_Guard_WooCommerce::get_cod_amount($order);
-        $original_total = $order->get_meta('_cod_guard_original_total');
         
         // Add order note
         $order->add_order_note(
@@ -589,9 +457,6 @@ class COD_Guard_Checkbox_Handler {
                 wc_price($cod_amount)
             )
         );
-        
-        // Restore original order totals for record keeping
-        $this->restore_original_order_totals($order, $original_total);
         
         // Set appropriate order status
         if ($cod_amount > 0) {
@@ -639,59 +504,6 @@ class COD_Guard_Checkbox_Handler {
             // Trigger completion action
             do_action('cod_guard_order_fully_completed', $order_id);
         }
-    }
-    
-    /**
-     * Restore original order totals
-     */
-    private function restore_original_order_totals($order, $original_total) {
-        if (!$original_total) {
-            return;
-        }
-        
-        $current_total = $order->get_total();
-        if ($current_total <= 0) {
-            return;
-        }
-        
-        $ratio = $original_total / $current_total;
-        
-        // Restore line items
-        foreach ($order->get_items() as $item) {
-            $current_item_total = $item->get_total();
-            $current_item_subtotal = $item->get_subtotal();
-            
-            $item->set_total($current_item_total * $ratio);
-            $item->set_subtotal($current_item_subtotal * $ratio);
-            $item->save();
-        }
-        
-        // Restore shipping
-        foreach ($order->get_shipping_methods() as $shipping_item) {
-            $current_shipping_total = $shipping_item->get_total();
-            $shipping_item->set_total($current_shipping_total * $ratio);
-            $shipping_item->save();
-        }
-        
-        // Restore taxes
-        foreach ($order->get_items('tax') as $tax_item) {
-            $current_tax_total = $tax_item->get_tax_total();
-            $current_shipping_tax = $tax_item->get_shipping_tax_total();
-            
-            $tax_item->set_tax_total($current_tax_total * $ratio);
-            $tax_item->set_shipping_tax_total($current_shipping_tax * $ratio);
-            $tax_item->save();
-        }
-        
-        // Set original total
-        $order->set_total($original_total);
-        
-        $order->add_order_note(
-            sprintf(
-                __('COD Guard: Order totals restored to original values (%s)', 'cod-guard-wc'),
-                wc_price($original_total)
-            )
-        );
     }
     
     /**
@@ -747,20 +559,20 @@ class COD_Guard_Checkbox_Handler {
     }
     
     /**
-     * Display COD Guard info in admin
+     * Display COD Guard info in admin - FIXED VERSION
      */
     public function display_cod_guard_info_admin($order) {
         if (!COD_Guard_WooCommerce::is_cod_guard_order($order)) {
             return;
         }
-
+        
         $advance_amount = COD_Guard_WooCommerce::get_advance_amount($order);
         $cod_amount = COD_Guard_WooCommerce::get_cod_amount($order);
         $advance_status = $order->get_meta('_cod_guard_advance_status');
         $cod_status = $order->get_meta('_cod_guard_cod_status');
         $original_total = $order->get_meta('_cod_guard_original_total');
         $payment_mode = $order->get_meta('_cod_guard_payment_mode');
-
+        
         ?>
         <div class="cod-guard-admin-info-fixed" style="background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); border: 2px solid #007cba; border-radius: 8px; padding: 20px; margin: 20px 0;">
             <h3 style="margin: 0 0 15px 0; color: #007cba; display: flex; align-items: center; gap: 10px; font-size: 18px;">
@@ -769,16 +581,16 @@ class COD_Guard_Checkbox_Handler {
                     <?php echo esc_html(ucfirst($payment_mode)); ?>
                 </span>
             </h3>
-
+            
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
-
+                
                 <!-- Order Total -->
                 <div style="background: white; padding: 15px; border-radius: 6px; border: 1px solid #ddd; text-align: center;">
                     <div style="font-size: 14px; color: #666; margin-bottom: 5px;">📋 <?php _e('Order Total', 'cod-guard-wc'); ?></div>
                     <div style="font-size: 20px; font-weight: bold; color: #333;"><?php echo wc_price($original_total); ?></div>
                     <div style="font-size: 12px; color: #888; margin-top: 5px;"><?php _e('(Full Order Value)', 'cod-guard-wc'); ?></div>
                 </div>
-
+                
                 <!-- Advance Payment -->
                 <div style="background: <?php echo $advance_status === 'completed' ? '#d4edda' : '#fff3cd'; ?>; padding: 15px; border-radius: 6px; border: 1px solid <?php echo $advance_status === 'completed' ? '#c3e6cb' : '#ffeaa7'; ?>; text-align: center;">
                     <div style="font-size: 14px; color: #666; margin-bottom: 5px;">💰 <?php _e('Advance Payment', 'cod-guard-wc'); ?></div>
@@ -789,7 +601,7 @@ class COD_Guard_Checkbox_Handler {
                         <?php echo $advance_status === 'completed' ? '✅ ' . __('Paid', 'cod-guard-wc') : '⏳ ' . __('Pending', 'cod-guard-wc'); ?>
                     </div>
                 </div>
-
+                
                 <!-- COD Balance -->
                 <div style="background: <?php echo $cod_status === 'completed' ? '#d4edda' : '#f8d7da'; ?>; padding: 15px; border-radius: 6px; border: 1px solid <?php echo $cod_status === 'completed' ? '#c3e6cb' : '#f5c6cb'; ?>; text-align: center;">
                     <div style="font-size: 14px; color: #666; margin-bottom: 5px;">🚚 <?php _e('COD Balance', 'cod-guard-wc'); ?></div>
@@ -800,9 +612,9 @@ class COD_Guard_Checkbox_Handler {
                         <?php echo $cod_status === 'completed' ? '✅ ' . __('Collected', 'cod-guard-wc') : '📋 ' . __('Due on Delivery', 'cod-guard-wc'); ?>
                     </div>
                 </div>
-
+                
             </div>
-
+            
             <?php if ($cod_status !== 'completed' && $cod_amount > 0): ?>
             <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; border-radius: 6px; margin-top: 15px; text-align: center;">
                 <strong style="color: #856404;">⚠️ <?php _e('Action Required:', 'cod-guard-wc'); ?></strong>
@@ -811,7 +623,7 @@ class COD_Guard_Checkbox_Handler {
                 </span>
             </div>
             <?php endif; ?>
-
+            
             <!-- Verification Row -->
             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center; font-size: 14px; color: #666;">
                 <?php _e('Verification:', 'cod-guard-wc'); ?> 
@@ -851,5 +663,12 @@ class COD_Guard_Checkbox_Handler {
             </div>
             <?php
         }
+    }
+    
+    /**
+     * Helper method to check if order uses COD Guard
+     */
+    private function is_cod_guard_order($order) {
+        return COD_Guard_WooCommerce::is_cod_guard_order($order);
     }
 }
