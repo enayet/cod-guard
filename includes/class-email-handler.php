@@ -1,8 +1,8 @@
 <?php
 /**
- * COD Guard Email Handler
+ * COD Guard Email Handler - FIXED VERSION
  * 
- * Handles email notifications and templates for COD Guard orders
+ * Replace includes/class-email-handler.php with this version
  */
 
 // Prevent direct access
@@ -41,12 +41,11 @@ class COD_Guard_Email_Handler {
     public function send_advance_payment_notification($order_id) {
         $order = wc_get_order($order_id);
         
-        if (!$order || !COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$order || !$this->is_cod_guard_order($order)) {
             return;
         }
         
         // Check if admin notifications are enabled
-        $settings = COD_Guard_WooCommerce::get_settings();
         $admin_notification = get_option('cod_guard_admin_notification', 'yes');
         
         if ($admin_notification !== 'yes') {
@@ -54,7 +53,7 @@ class COD_Guard_Email_Handler {
         }
         
         // Get payment summary
-        $payment_summary = COD_Guard_Checkout_Handler::get_order_payment_summary($order);
+        $payment_summary = $this->get_order_payment_summary($order);
         
         if (!$payment_summary) {
             return;
@@ -87,7 +86,7 @@ class COD_Guard_Email_Handler {
     public function send_order_completion_notification($order_id) {
         $order = wc_get_order($order_id);
         
-        if (!$order || !COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$order || !$this->is_cod_guard_order($order)) {
             return;
         }
         
@@ -224,7 +223,7 @@ class COD_Guard_Email_Handler {
      * Get completion notification email content
      */
     private function get_completion_notification_content($order) {
-        $payment_summary = COD_Guard_Checkout_Handler::get_order_payment_summary($order);
+        $payment_summary = $this->get_order_payment_summary($order);
         
         ob_start();
         ?>
@@ -276,11 +275,11 @@ class COD_Guard_Email_Handler {
      * Add COD Guard details to order emails
      */
     public function add_cod_guard_details_to_email($order, $sent_to_admin, $plain_text, $email) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $payment_summary = COD_Guard_Checkout_Handler::get_order_payment_summary($order);
+        $payment_summary = $this->get_order_payment_summary($order);
         
         if (!$payment_summary) {
             return;
@@ -294,14 +293,14 @@ class COD_Guard_Email_Handler {
     }
     
     /**
-     * Add COD balance notice to emails
+     * Add COD balance notice to emails - FIXED
      */
     public function add_cod_balance_notice($order, $sent_to_admin, $plain_text, $email) {
-        if (!COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $cod_amount = COD_Guard_Payment_Modes::get_cod_amount($order);
+        $cod_amount = $this->get_cod_amount($order);
         $cod_status = $order->get_meta('_cod_guard_cod_status');
         
         if ($cod_amount <= 0 || $cod_status === 'completed') {
@@ -406,11 +405,11 @@ class COD_Guard_Email_Handler {
     public function send_cod_reminder_email($order_id) {
         $order = wc_get_order($order_id);
         
-        if (!$order || !COD_Guard_Payment_Modes::is_cod_guard_order($order)) {
+        if (!$order || !$this->is_cod_guard_order($order)) {
             return;
         }
         
-        $cod_amount = COD_Guard_Payment_Modes::get_cod_amount($order);
+        $cod_amount = $this->get_cod_amount($order);
         $cod_status = $order->get_meta('_cod_guard_cod_status');
         
         if ($cod_amount <= 0 || $cod_status === 'completed') {
@@ -438,5 +437,37 @@ class COD_Guard_Email_Handler {
         wp_mail($customer_email, $subject, $message, $headers);
         
         $order->add_order_note(__('COD Guard: Reminder email sent to customer for pending COD payment.', 'cod-guard-wc'));
+    }
+    
+    /**
+     * Helper Methods - using main plugin methods
+     */
+    
+    /**
+     * Check if order uses COD Guard
+     */
+    private function is_cod_guard_order($order) {
+        return COD_Guard_WooCommerce::is_cod_guard_order($order);
+    }
+    
+    /**
+     * Get advance amount for an order
+     */
+    private function get_advance_amount($order) {
+        return COD_Guard_WooCommerce::get_advance_amount($order);
+    }
+    
+    /**
+     * Get COD amount for an order
+     */
+    private function get_cod_amount($order) {
+        return COD_Guard_WooCommerce::get_cod_amount($order);
+    }
+    
+    /**
+     * Get order payment summary
+     */
+    private function get_order_payment_summary($order) {
+        return COD_Guard_WooCommerce::get_order_payment_summary($order);
     }
 }

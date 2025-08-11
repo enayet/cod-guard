@@ -1,7 +1,7 @@
 <?php
 /**
- * COD Guard Checkout Success Handler
- * Save as: includes/class-checkout-success.php
+ * COD Guard Checkout Success Handler - COMPLETE FIX
+ * Replace includes/class-checkout-success.php with this version
  */
 
 // Prevent direct access
@@ -15,73 +15,215 @@ class COD_Guard_Checkout_Success {
      * Constructor
      */
     public function __construct() {
-        // Checkout completion and redirect handling
-        add_action('woocommerce_checkout_order_processed', array($this, 'handle_order_success'), 999, 3);
+        // CRITICAL: Handle checkout process early
+        add_action('woocommerce_checkout_process', array($this, 'prepare_cod_guard_checkout'), 1);
         
-        // Fix checkout redirect
+        // Handle order creation and processing
+        add_action('woocommerce_checkout_order_processed', array($this, 'handle_order_processed'), 1, 3);
+        
+        // CRITICAL: Fix checkout redirect
         add_filter('woocommerce_checkout_no_payment_needed_redirect', array($this, 'fix_checkout_redirect'), 10, 2);
+        add_filter('woocommerce_get_checkout_order_received_url', array($this, 'fix_received_url'), 10, 2);
         
         // Handle thank you page
         add_action('woocommerce_thankyou', array($this, 'display_success_message'), 1);
         
-        // Handle cart page success messages
-        add_action('woocommerce_before_cart', array($this, 'handle_cart_success_message'));
+        // CRITICAL: Prevent error notices for COD Guard orders
+        add_action('woocommerce_before_checkout_form', array($this, 'clear_error_notices'));
+        add_action('wp_loaded', array($this, 'handle_checkout_redirect_check'));
         
-        // Fix checkout form errors
-        add_action('woocommerce_before_checkout_form', array($this, 'handle_checkout_errors'));
+        // Fix AJAX checkout
+        add_action('wp_ajax_woocommerce_checkout', array($this, 'intercept_ajax_checkout'), 1);
+        add_action('wp_ajax_nopriv_woocommerce_checkout', array($this, 'intercept_ajax_checkout'), 1);
         
-        // Handle AJAX checkout responses
-        add_action('wp_ajax_woocommerce_checkout', array($this, 'handle_ajax_checkout'), 1);
-        add_action('wp_ajax_nopriv_woocommerce_checkout', array($this, 'handle_ajax_checkout'), 1);
-        
-        // Clean up checkout process
-        add_action('woocommerce_checkout_process', array($this, 'cleanup_checkout_process'), 1);
-        
-        // Handle checkout posted data
-        add_filter('woocommerce_checkout_posted_data', array($this, 'mark_cod_guard_checkout'));
+        // Handle cart clearing
+        add_action('woocommerce_checkout_update_order_meta', array($this, 'force_cart_clear'), 999, 2);
     }
     
     /**
-     * Handle order success - final step
+     * CRITICAL: Prepare COD Guard checkout - runs very early
      */
-    public function handle_order_success($order_id, $posted_data, $order) {
-        // Only handle COD Guard orders
+    public function prepare_cod_guard_checkout() {
         if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
             return;
         }
         
-        if (!$order || $order->get_meta('_cod_guard_enabled') !== 'yes') {
-            return;
-        }
+        // Set session flag early
+        WC()->session->set('cod_guard_processing', true);
+        WC()->session->set('cod_guard_original_total', WC()->cart->get_total('edit'));
         
-        // CRITICAL: Clear cart immediately
-        if (WC()->cart && !WC()->cart->is_empty()) {
-            WC()->cart->empty_cart();
-            error_log('COD Guard Success: Cart cleared for order ' . $order_id);
-        }
-        
-        // Clear any existing error notices
+        // Clear any existing error notices that might interfere
         wc_clear_notices();
         
-        // Set session flag for success
-        WC()->session->set('cod_guard_order_success', $order_id);
-        WC()->session->set('cod_guard_success_timestamp', time());
-        
-        error_log('COD Guard Success: Order success handled for ' . $order_id);
+        error_log('COD Guard: Checkout preparation completed');
     }
     
     /**
-     * Fix checkout redirect
+     * CRITICAL: Handle order processed - runs first
+     */
+    public function handle_order_processed($order_id, $posted_data, $order) {
+        // Only handle COD Guard orders
+        if (!WC()->session->get('cod_guard_processing')) {
+            return;
+        }
+        
+        if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
+            return;
+        }
+        
+        // Mark order as COD Guard order
+        $order->update_meta_data('_cod_guard_checkout_success', 'yes');
+        $order->save();
+        
+        // CRITICAL: Clear cart immediately
+        if (WC()->cart) {
+            WC()->cart->empty_cart();
+            error_log('COD Guard: Cart cleared for order ' . $order_id);
+        }
+        
+        // Clear any error notices
+        wc_clear_notices();
+        
+        // Set success session
+        WC()->session->set('cod_guard_order_success', $order_id);
+        WC()->session->set('cod_guard_success_timestamp', time());
+        
+        // Clear processing flag
+        WC()->session->__unset('cod_guard_processing');
+        
+        error_log('COD Guard: Order ' . $order_id . ' processed successfully');
+    }
+    
+    /**
+     * CRITICAL: Fix checkout redirect
      */
     public function fix_checkout_redirect($redirect_url, $order) {
-        // Check if this is a COD Guard order
-        if ($order && $order->get_meta('_cod_guard_enabled') === 'yes') {
-            // Force redirect to thank you page
+        if ($order && $order->get_meta('_cod_guard_checkout_success') === 'yes') {
             $redirect_url = $order->get_checkout_order_received_url();
             $redirect_url = add_query_arg('cod_guard_success', '1', $redirect_url);
-            error_log('COD Guard Success: Redirect URL set to: ' . $redirect_url);
+            error_log('COD Guard: Redirect fixed to: ' . $redirect_url);
         }
         return $redirect_url;
+    }
+    
+    /**
+     * Fix received URL
+     */
+    public function fix_received_url($url, $order) {
+        if ($order && COD_Guard_WooCommerce::is_cod_guard_order($order)) {
+            $url = add_query_arg('cod_guard_success', '1', $url);
+        }
+        return $url;
+    }
+    
+    /**
+     * CRITICAL: Clear error notices that interfere with COD Guard
+     */
+    public function clear_error_notices() {
+        // Check if this is a COD Guard checkout completion
+        $success_order_id = WC()->session->get('cod_guard_order_success');
+        
+        if ($success_order_id && WC()->cart->is_empty()) {
+            // Clear all error notices for COD Guard orders
+            wc_clear_notices();
+            
+            // Redirect to thank you page
+            $order = wc_get_order($success_order_id);
+            if ($order) {
+                $redirect_url = add_query_arg('cod_guard_success', '1', $order->get_checkout_order_received_url());
+                wp_redirect($redirect_url);
+                exit;
+            }
+        }
+    }
+    
+    /**
+     * Handle checkout redirect check
+     */
+    public function handle_checkout_redirect_check() {
+        // Check if we're on checkout page with empty cart but have COD Guard success
+        if (is_checkout() && !is_order_received_page()) {
+            $success_order_id = WC()->session->get('cod_guard_order_success');
+            
+            if ($success_order_id && WC()->cart->is_empty()) {
+                $order = wc_get_order($success_order_id);
+                if ($order && COD_Guard_WooCommerce::is_cod_guard_order($order)) {
+                    // Clear notices and redirect
+                    wc_clear_notices();
+                    $redirect_url = add_query_arg('cod_guard_success', '1', $order->get_checkout_order_received_url());
+                    wp_redirect($redirect_url);
+                    exit;
+                }
+            }
+        }
+    }
+    
+    /**
+     * CRITICAL: Intercept AJAX checkout for COD Guard orders
+     */
+    public function intercept_ajax_checkout() {
+        if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
+            return;
+        }
+        
+        // Add filter to modify checkout result
+        add_filter('woocommerce_checkout_posted_data', array($this, 'mark_ajax_checkout'));
+        
+        // Hook into order creation for AJAX
+        add_action('woocommerce_checkout_order_processed', array($this, 'handle_ajax_success'), 999, 3);
+    }
+    
+    /**
+     * Mark AJAX checkout
+     */
+    public function mark_ajax_checkout($data) {
+        $data['_cod_guard_ajax'] = true;
+        return $data;
+    }
+    
+    /**
+     * Handle AJAX success - send proper response
+     */
+    public function handle_ajax_success($order_id, $posted_data, $order) {
+        if (!isset($_POST['cod_guard_enabled']) || $_POST['cod_guard_enabled'] !== '1') {
+            return;
+        }
+        
+        if (!wp_doing_ajax()) {
+            return;
+        }
+        
+        if ($order && COD_Guard_WooCommerce::is_cod_guard_order($order)) {
+            // Clear output buffer
+            while (ob_get_level()) {
+                ob_end_clean();
+            }
+            
+            // Send success response
+            wp_send_json_success(array(
+                'result' => 'success',
+                'redirect' => add_query_arg('cod_guard_success', '1', $order->get_checkout_order_received_url())
+            ));
+        }
+    }
+    
+    /**
+     * Force cart clear for COD Guard orders
+     */
+    public function force_cart_clear($order_id, $data) {
+        $order = wc_get_order($order_id);
+        
+        if ($order && COD_Guard_WooCommerce::is_cod_guard_order($order)) {
+            // Force empty cart
+            if (WC()->cart) {
+                WC()->cart->empty_cart();
+            }
+            
+            // Clear any error notices
+            wc_clear_notices();
+            
+            error_log('COD Guard: Force cart clear for order ' . $order_id);
+        }
     }
     
     /**
@@ -93,7 +235,7 @@ class COD_Guard_Checkout_Success {
         }
         
         $order = wc_get_order($order_id);
-        if (!$order || $order->get_meta('_cod_guard_enabled') !== 'yes') {
+        if (!$order || !COD_Guard_WooCommerce::is_cod_guard_order($order)) {
             return;
         }
         
@@ -134,147 +276,7 @@ class COD_Guard_Checkout_Success {
             echo '<p><a href="' . esc_url($order->get_view_order_url()) . '" class="button button-primary" style="background: #28a745; border-color: #28a745;">' . __('View Order Details', 'cod-guard-wc') . '</a></p>';
             echo '</div>';
             
-            error_log('COD Guard Success: Success message displayed for order ' . $order_id);
+            error_log('COD Guard: Success message displayed for order ' . $order_id);
         }
-    }
-    
-    /**
-     * Handle cart page success messages
-     */
-    public function handle_cart_success_message() {
-        // Check if there's a success message to show
-        $success_order_id = WC()->session->get('cod_guard_order_success');
-        $success_timestamp = WC()->session->get('cod_guard_success_timestamp');
-        
-        // Only show if the success is recent (within 5 minutes)
-        if ($success_order_id && $success_timestamp && (time() - $success_timestamp) < 300) {
-            $order = wc_get_order($success_order_id);
-            if ($order && $order->get_meta('_cod_guard_enabled') === 'yes') {
-                $cod_amount = $order->get_meta('_cod_guard_cod_amount');
-                
-                // Clear the session
-                WC()->session->__unset('cod_guard_order_success');
-                WC()->session->__unset('cod_guard_success_timestamp');
-                
-                // Show success message and redirect to thank you page
-                echo '<div class="woocommerce-message cod-guard-cart-success" style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 15px; margin: 20px 0; border-radius: 5px;">';
-                echo '<h3 style="margin-top: 0;">✅ ' . __('Order Completed Successfully!', 'cod-guard-wc') . '</h3>';
-                echo '<p style="margin-bottom: 10px;">';
-                printf(
-                    __('Your advance payment has been processed for Order #%s. Please pay %s to the delivery person when your order arrives.', 'cod-guard-wc'),
-                    $order->get_order_number(),
-                    '<strong>' . wc_price($cod_amount) . '</strong>'
-                );
-                echo '</p>';
-                echo '<p><a href="' . esc_url($order->get_checkout_order_received_url()) . '" class="button">' . __('View Order Details', 'cod-guard-wc') . '</a></p>';
-                echo '</div>';
-                
-                // Auto redirect to thank you page after 3 seconds
-                echo '<script>
-                setTimeout(function() {
-                    window.location.href = "' . esc_url($order->get_checkout_order_received_url() . '?cod_guard_success=1') . '";
-                }, 3000);
-                </script>';
-            }
-        }
-    }
-    
-    /**
-     * Handle checkout errors
-     */
-    public function handle_checkout_errors() {
-        // If cart is empty but there are error notices, it might be a COD Guard order
-        if (WC()->cart->is_empty()) {
-            $notices = wc_get_notices('error');
-            if (!empty($notices)) {
-                // Check if any of the notices are about processing errors
-                $has_processing_error = false;
-                foreach ($notices as $notice) {
-                    $message = is_array($notice) ? $notice['notice'] : $notice;
-                    if (strpos($message, 'error processing') !== false || 
-                        strpos($message, 'review your order') !== false) {
-                        $has_processing_error = true;
-                        break;
-                    }
-                }
-                
-                if ($has_processing_error) {
-                    // Clear the error and redirect to cart
-                    wc_clear_notices();
-                    wc_add_notice(__('Your order may have been processed. Please check your order history.', 'cod-guard-wc'), 'notice');
-                    wp_redirect(wc_get_cart_url());
-                    exit;
-                }
-            }
-        }
-    }
-    
-    /**
-     * Handle AJAX checkout
-     */
-    public function handle_ajax_checkout() {
-        if (isset($_POST['cod_guard_enabled']) && $_POST['cod_guard_enabled'] === '1') {
-            // Add filter to modify the checkout result
-            add_filter('woocommerce_checkout_posted_data', array($this, 'mark_cod_guard_ajax'));
-            
-            // Hook into checkout completion for AJAX
-            add_action('woocommerce_checkout_order_processed', array($this, 'handle_ajax_completion'), 1000, 3);
-        }
-    }
-    
-    /**
-     * Handle AJAX checkout completion
-     */
-    public function handle_ajax_completion($order_id, $posted_data, $order) {
-        if (isset($_POST['cod_guard_enabled']) && $_POST['cod_guard_enabled'] === '1' && wp_doing_ajax()) {
-            // Clear any output buffers
-            while (ob_get_level()) {
-                ob_end_clean();
-            }
-            
-            // Ensure order exists and is COD Guard
-            if ($order && $order->get_meta('_cod_guard_enabled') === 'yes') {
-                // Send success response
-                wp_send_json_success(array(
-                    'result' => 'success',
-                    'redirect' => add_query_arg('cod_guard_success', '1', $order->get_checkout_order_received_url())
-                ));
-            }
-        }
-    }
-    
-    /**
-     * Clean up checkout process
-     */
-    public function cleanup_checkout_process() {
-        if (isset($_POST['cod_guard_enabled']) && $_POST['cod_guard_enabled'] === '1') {
-            // Clear any conflicting notices
-            $notices = WC()->session->get('wc_notices', array());
-            if (isset($notices['error'])) {
-                $notices['error'] = array_filter($notices['error'], function($notice) {
-                    $notice_text = is_array($notice) ? $notice['notice'] : $notice;
-                    return strpos($notice_text, 'processing your order') === false;
-                });
-                WC()->session->set('wc_notices', $notices);
-            }
-        }
-    }
-    
-    /**
-     * Mark COD Guard checkout
-     */
-    public function mark_cod_guard_checkout($data) {
-        if (isset($data['cod_guard_enabled']) && $data['cod_guard_enabled'] === '1') {
-            $data['_cod_guard_checkout'] = '1';
-        }
-        return $data;
-    }
-    
-    /**
-     * Mark COD Guard AJAX
-     */
-    public function mark_cod_guard_ajax($data) {
-        $data['_is_cod_guard_ajax'] = true;
-        return $data;
     }
 }

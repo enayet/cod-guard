@@ -21,8 +21,8 @@ class COD_Guard_Order_Management {
         add_filter('wc_order_statuses', array($this, 'add_custom_order_status'));
         
         // Admin order page enhancements
-        add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_cod_guard_info'));
-        add_action('woocommerce_admin_order_data_after_order_details', array($this, 'display_payment_breakdown'));
+        //add_action('woocommerce_admin_order_data_after_billing_address', array($this, 'display_cod_guard_info'));
+        //add_action('woocommerce_admin_order_data_after_order_details', array($this, 'display_payment_breakdown'));
         
         // Order list columns
         add_filter('manage_edit-shop_order_columns', array($this, 'add_order_list_columns'));

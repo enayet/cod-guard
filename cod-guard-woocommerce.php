@@ -446,3 +446,92 @@ function cod_guard_woocommerce() {
 
 // Start the plugin
 cod_guard_woocommerce();
+
+
+
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    add_action('init', function() {
+        // Debug checkout process
+        add_action('woocommerce_checkout_process', function() {
+            if (isset($_POST['cod_guard_enabled']) && $_POST['cod_guard_enabled'] === '1') {
+                error_log('COD Guard Debug: Checkout process started');
+                error_log('COD Guard Debug: POST data - ' . print_r($_POST, true));
+            }
+        }, 1);
+        
+        // Debug order creation
+        add_action('woocommerce_checkout_order_processed', function($order_id, $posted_data, $order) {
+            if (isset($_POST['cod_guard_enabled']) && $_POST['cod_guard_enabled'] === '1') {
+                error_log('COD Guard Debug: Order ' . $order_id . ' processed');
+                error_log('COD Guard Debug: Order status - ' . $order->get_status());
+                error_log('COD Guard Debug: Order total - ' . $order->get_total());
+                error_log('COD Guard Debug: Cart empty? - ' . (WC()->cart->is_empty() ? 'YES' : 'NO'));
+            }
+        }, 1, 3);
+        
+        // Debug payment completion
+        add_action('woocommerce_payment_complete', function($order_id) {
+            $order = wc_get_order($order_id);
+            if ($order && $order->get_meta('_cod_guard_enabled') === 'yes') {
+                error_log('COD Guard Debug: Payment completed for order ' . $order_id);
+                error_log('COD Guard Debug: Order status after payment - ' . $order->get_status());
+            }
+        });
+        
+        // Debug notices
+        add_action('woocommerce_before_checkout_form', function() {
+            $notices = wc_get_notices();
+            if (!empty($notices)) {
+                error_log('COD Guard Debug: Notices on checkout - ' . print_r($notices, true));
+            }
+        });
+        
+        // Debug session data
+        add_action('wp_footer', function() {
+            if (is_checkout() && WC()->session) {
+                $session_data = array(
+                    'cod_guard_processing' => WC()->session->get('cod_guard_processing'),
+                    'cod_guard_order_success' => WC()->session->get('cod_guard_order_success'),
+                    'cod_guard_original_total' => WC()->session->get('cod_guard_original_total'),
+                );
+                error_log('COD Guard Debug: Session data - ' . print_r($session_data, true));
+            }
+        });
+        
+        // Debug redirects
+        add_action('wp_redirect', function($location, $status) {
+            if (strpos($location, 'order-received') !== false) {
+                error_log('COD Guard Debug: Redirect to - ' . $location);
+            }
+        }, 10, 2);
+    });
+}
+
+// Also add this function to help with manual debugging
+function cod_guard_debug_order($order_id) {
+    if (!defined('WP_DEBUG') || !WP_DEBUG) {
+        return;
+    }
+    
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        error_log('COD Guard Debug: Order ' . $order_id . ' not found');
+        return;
+    }
+    
+    $debug_data = array(
+        'order_id' => $order_id,
+        'status' => $order->get_status(),
+        'total' => $order->get_total(),
+        'payment_method' => $order->get_payment_method(),
+        'cod_guard_enabled' => $order->get_meta('_cod_guard_enabled'),
+        'advance_amount' => $order->get_meta('_cod_guard_advance_amount'),
+        'cod_amount' => $order->get_meta('_cod_guard_cod_amount'),
+        'original_total' => $order->get_meta('_cod_guard_original_total'),
+        'advance_status' => $order->get_meta('_cod_guard_advance_status'),
+        'cod_status' => $order->get_meta('_cod_guard_cod_status'),
+        'checkout_success' => $order->get_meta('_cod_guard_checkout_success'),
+    );
+    
+    error_log('COD Guard Debug Order ' . $order_id . ': ' . print_r($debug_data, true));
+}
